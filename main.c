@@ -1,7 +1,5 @@
 // Must be defined in one file, _before_ #include "clay.h"
 #define CLAY_IMPLEMENTATION
-#define bool _Bool;
-
 #include <ctype.h>
 #include <sys/ioctl.h>
 #include <termios.h>
@@ -9,6 +7,16 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
+#include <stdint.h>
+
+// #define CLAY__FLOATEQUAL_FN(x, y) x == y
+
+#define bool _Bool;
+// #define CLAY__FLOAT int32_t
+// #define CLAY__MAXFLOAT INT32_MAX 
+// #define CLAY_DISABLE_SIMD 1
+// #define CLAY__EPSILON 0
+
 #include "clay.h"
 #include "clay_renderer_terminal.c"
 
@@ -25,8 +33,8 @@ int mX = 0;
 int mY = 0;
 int mP = 0;
 Clay_Dimensions wsize = {
-  .width = (float) 80,
-  .height = (float) 24,
+  .width = (CLAY__FLOAT) 80,
+  .height = (CLAY__FLOAT) 24,
 };
 
 Clay_String txt_clicked = CLAY_STRING("CLICKED");
@@ -76,7 +84,7 @@ void RenderButton(Clay_String txt, int* buttonState){
 }
 
 Clay_RenderCommandArray CreateLayout() {
-  float startTime = (float)clock()/CLOCKS_PER_SEC;
+  float startTime = (CLAY__FLOAT)clock()/CLOCKS_PER_SEC;
   frameCount++;
   // highlight_color = COLOR_RED;
   Clay_BeginLayout();
@@ -106,7 +114,7 @@ Clay_RenderCommandArray CreateLayout() {
       CLAY_TEXT(CLAY_STRING("Sidebar"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
       RenderButton(CLAY_STRING("B1"), &button1);
       RenderButton(CLAY_STRING("B2"), &button2);
-      // RenderButton(CLAY_STRING("B3"), &button3);
+      RenderButton(CLAY_STRING("B3"), &button3);
     }
     
     CLAY({
@@ -121,7 +129,10 @@ Clay_RenderCommandArray CreateLayout() {
         },
         .backgroundColor = COLOR_LIGHT
     }) {
-      RenderButton(CLAY_STRING("B2"), &button3);
+      CLAY_TEXT(CLAY_STRING("Sidebar"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
+      RenderButton(CLAY_STRING("B1"), &button1);
+      RenderButton(CLAY_STRING("B2"), &button2);
+      RenderButton(CLAY_STRING("B3"), &button3);
 
       char result[128];
       sprintf(result, "MX: %d MY: %d MC: %d F:%d fps: %.5f", mX, mY, mP, frameCount, renderSpeed > 0 ? 1/renderSpeed : 0);
@@ -142,7 +153,7 @@ Clay_RenderCommandArray CreateLayout() {
       );
     }
   }
-  renderSpeed = ((float)clock()/CLOCKS_PER_SEC) - startTime;
+  renderSpeed = ((CLAY__FLOAT)clock()/CLOCKS_PER_SEC) - startTime;
 
   return Clay_EndLayout();
 }
@@ -195,8 +206,8 @@ void setTermSize(Clay_Dimensions* wsize) {
     struct winsize w;
     if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1)
       return;
-    wsize->width = (float) w.ws_col;
-  wsize->height = (float) w.ws_row;
+    wsize->width = (CLAY__FLOAT) w.ws_col;
+  wsize->height = (CLAY__FLOAT) w.ws_row;
 }
 
 void die(const char *s) {
