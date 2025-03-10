@@ -1,4 +1,4 @@
-// VERSION: 0.12
+// VERSION: 0.13
 
 /*
     NOTE: In order to use this library you must define
@@ -798,6 +798,9 @@ CLAY_DLL_EXPORT Clay_Arena Clay_CreateArenaWithCapacityAndMemory(size_t capacity
 // Sets the state of the "pointer" (i.e. the mouse or touch) in Clay's internal data. Used for detecting and responding to mouse events in the debug view,
 // as well as for Clay_Hovered() and scroll element handling.
 CLAY_DLL_EXPORT void Clay_SetPointerState(Clay_Vector2 position, bool pointerDown);
+// Gets the state of the "pointer". This will return the position provided by `Clay_SetPointerState` 
+// and the frame pressed state.
+CLAY_DLL_EXPORT Clay_PointerData Clay_GetPointerState();
 // Initialize Clay's internal arena and setup required data before layout can begin. Only needs to be called once.
 // - arena can be created using Clay_CreateArenaWithCapacityAndMemory()
 // - layoutDimensions are the initial bounding dimensions of the layout (i.e. the screen width and height for a full screen layout)
@@ -952,20 +955,20 @@ typeName *arrayName##Slice_Get(arrayName##Slice *slice, int32_t index) {        
 }                                                                                                               \
                                                                                                                 \
 typeName arrayName##_RemoveSwapback(arrayName *array, int32_t index) {                                          \
-	if (Clay__Array_RangeCheck(index, array->length)) {                                                         \
-		array->length--;                                                                                        \
-		typeName removed = array->internalArray[index];                                                         \
-		array->internalArray[index] = array->internalArray[array->length];                                      \
-		return removed;                                                                                         \
-	}                                                                                                           \
-	return typeName##_DEFAULT;                                                                                  \
+    if (Clay__Array_RangeCheck(index, array->length)) {                                                         \
+        array->length--;                                                                                        \
+        typeName removed = array->internalArray[index];                                                         \
+        array->internalArray[index] = array->internalArray[array->length];                                      \
+        return removed;                                                                                         \
+    }                                                                                                           \
+    return typeName##_DEFAULT;                                                                                  \
 }                                                                                                               \
                                                                                                                 \
 void arrayName##_Set(arrayName *array, int32_t index, typeName value) {                                         \
-	if (Clay__Array_RangeCheck(index, array->capacity)) {                                                       \
-		array->internalArray[index] = value;                                                                    \
-		array->length = index < array->length ? array->length : index + 1;                                      \
-	}                                                                                                           \
+    if (Clay__Array_RangeCheck(index, array->capacity)) {                                                       \
+        array->internalArray[index] = value;                                                                    \
+        array->length = index < array->length ? array->length : index + 1;                                      \
+    }                                                                                                           \
 }                                                                                                               \
 
 #define CLAY__ARRAY_DEFINE(typeName, arrayName)     \
@@ -1540,7 +1543,8 @@ Clay__MeasureTextCacheItem *Clay__MeasureTextCached(Clay_String *text, Clay_Text
 }
 
 bool Clay__PointIsInsideRect(Clay_Vector2 point, Clay_BoundingBox rect) {
-    return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+    // return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+    return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y < rect.y + rect.height;
 }
 
 Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Clay_LayoutElement* layoutElement, uint32_t idAlias) {
@@ -3732,6 +3736,12 @@ void Clay_SetPointerState(Clay_Vector2 position, bool isPointerDown) {
             context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED_THIS_FRAME;
         }
     }
+}
+
+CLAY_WASM_EXPORT("Clay_GetPointerState")
+Clay_PointerData Clay_GetPointerState() {
+    Clay_Context* context = Clay_GetCurrentContext();
+    return context->pointerInfo;
 }
 
 CLAY_WASM_EXPORT("Clay_Initialize")

@@ -2,74 +2,149 @@
 #define CLAY_IMPLEMENTATION
 #define bool _Bool;
 
+#include <ctype.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <unistd.h>
+#include <time.h>
 #include "clay.h"
 #include "clay_renderer_terminal.c"
 
-const Clay_Color COLOR_LIGHT = (Clay_Color) {120, 120, 120, 120};
+const Clay_Color COLOR_BLACK = (Clay_Color) {0, 0, 0, 255};
 const Clay_Color COLOR_WHITE = (Clay_Color) {255, 255, 255, 255};
-static uint64_t idx = 0;
+const Clay_Color COLOR_RED = (Clay_Color) {255, 0, 0, 255};
+const Clay_Color COLOR_GREEN = (Clay_Color) {0, 255, 0, 255};
+const Clay_Color COLOR_BLUE = (Clay_Color) {0, 0, 255, 255};
+const Clay_Color COLOR_LIGHT = (Clay_Color) {100, 100, 100, 255};
+
+static uint64_t frameCount = 0;
+static float renderSpeed = 0;
+int mX = 0;
+int mY = 0;
+int mP = 0;
+Clay_Dimensions wsize = {
+  .width = (float) 80,
+  .height = (float) 24,
+};
+
+Clay_String txt_clicked = CLAY_STRING("CLICKED");
+Clay_String txt_hovered = CLAY_STRING("HOVERED");
+Clay_String txt_nope = CLAY_STRING("NOPE");
+Clay_String txt_btn = CLAY_STRING("NOPE");
+
+static Clay_Color highlight_color = (Clay_Color) {255, 0, 0, 255};
+
 // // An example function to begin the "root" of your layout tree
+int button1 = 0;
+int button2 = 0;
+int button3 = 0;
+
+void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerInfo, intptr_t userData) {
+  int *buttonData = (int *)userData;
+    // Pointer state allows you to detect mouse down / hold / release
+    if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        *buttonData = 1;
+
+    if( pointerInfo.state == CLAY_POINTER_DATA_RELEASED)
+        *buttonData = 0;
+
+    if (pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME){
+        *buttonData = 0;
+      // HERE DO THINGS
+    }
+
+}
+
+void RenderButton(Clay_String txt, int* buttonState){
+  CLAY({
+      .layout = {
+      .padding = CLAY_PADDING_ALL(0),
+        .layoutDirection = CLAY_TOP_TO_BOTTOM,
+        .sizing = {
+          .width = CLAY_SIZING_FIXED(8),
+          .height = CLAY_SIZING_FIXED(1)
+        }
+      },
+      .backgroundColor = Clay_Hovered() ? (*buttonState ? COLOR_RED : COLOR_BLUE) : COLOR_GREEN,
+      .border = { .width = CLAY_BORDER_OUTSIDE(0), .color = COLOR_LIGHT }
+    }) {
+      Clay_OnHover(HandleButtonInteraction, (intptr_t)buttonState);
+      CLAY_TEXT(Clay_Hovered() ? (*buttonState ? txt_clicked : txt_hovered) : txt, CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE }));
+    } 
+}
+
 Clay_RenderCommandArray CreateLayout() {
-	idx++;
-	Clay_BeginLayout();
+  float startTime = (float)clock()/CLOCKS_PER_SEC;
+  frameCount++;
+  // highlight_color = COLOR_RED;
+  Clay_BeginLayout();
 
-	CLAY({
-		.id = CLAY_ID("OuterContainer"),
-		.layout = {
-			.layoutDirection = CLAY_LEFT_TO_RIGHT,
-			.sizing = {
-				CLAY_SIZING_GROW(), CLAY_SIZING_GROW()
-			},
-		},
-		.backgroundColor = {0, 0, 0, 255}
-	}) {
-		CLAY({
-            .id = CLAY_ID("SideBar"),
-            .layout = {
-				.padding = CLAY_PADDING_ALL(1),
-            	.layoutDirection = CLAY_TOP_TO_BOTTOM,
-            	.sizing = {
-            		.width = CLAY_SIZING_PERCENT(0.5),
-            		.height = CLAY_SIZING_PERCENT(1)
-            	}
-            },
-            .backgroundColor = COLOR_LIGHT,
-            .border = { .width = { 1,2,1,1,1 }, .color = COLOR_WHITE }
-        }) {
+  CLAY({
+    .id = CLAY_ID("OuterContainer"),
+    .layout = {
+      .layoutDirection = CLAY_LEFT_TO_RIGHT,
+      .sizing = {
+        CLAY_SIZING_GROW(), CLAY_SIZING_GROW()
+      },
+    },
+  }) {
+    CLAY({
+        .id = CLAY_ID("SideBar"),
+        .layout = {
+          .padding = CLAY_PADDING_ALL(0),
+          .layoutDirection = CLAY_TOP_TO_BOTTOM,
+          .sizing = {
+            .width = CLAY_SIZING_FIXED(20),
+            .height = CLAY_SIZING_PERCENT(1)
+          }
+        },
+        .backgroundColor = COLOR_RED,
+        .border = { .width = CLAY_BORDER_OUTSIDE(0), .color = COLOR_WHITE }
+    }) {
+      CLAY_TEXT(CLAY_STRING("Sidebar"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
+      RenderButton(CLAY_STRING("B1"), &button1);
+      RenderButton(CLAY_STRING("B2"), &button2);
+      // RenderButton(CLAY_STRING("B3"), &button3);
+    }
+    
+    CLAY({
+      .id = CLAY_ID("OtherSideBar"),
+        .layout = {
+        .padding = CLAY_PADDING_ALL(2),
+          .layoutDirection = CLAY_TOP_TO_BOTTOM,
+          .sizing = {
+            .width = CLAY_SIZING_GROW(),
+            .height = CLAY_SIZING_PERCENT(1)
+          }
+        },
+        .backgroundColor = COLOR_LIGHT
+    }) {
+      RenderButton(CLAY_STRING("B2"), &button3);
 
-		}
+      char result[128];
+      sprintf(result, "MX: %d MY: %d MC: %d F:%d fps: %.5f", mX, mY, mP, frameCount, renderSpeed > 0 ? 1/renderSpeed : 0);
+      Clay_String txt = (Clay_String) {
+        .length = strlen(result),
+        .chars = result
+      };
+      
+      // TODO font size is wrong, only one is allowed, but I don't know which it is
+      CLAY_TEXT(
+        txt,
+          CLAY_TEXT_CONFIG({
+            .wrapMode = CLAY_TEXT_WRAP_WORDS,
+            .fontId = 1,
+            .fontSize = 1,
+            .textColor = COLOR_GREEN
+          })
+      );
+    }
+  }
+  renderSpeed = ((float)clock()/CLOCKS_PER_SEC) - startTime;
 
-		CLAY({
-			.id = CLAY_ID("OtherSideBar"),
-		    .layout = {
-				.padding = CLAY_PADDING_ALL(2),
-		    	.layoutDirection = CLAY_TOP_TO_BOTTOM,
-		    	.sizing = {
-		    		.width = CLAY_SIZING_PERCENT(0.5),
-		    		.height = CLAY_SIZING_PERCENT(1)
-		    	}
-		    },
-		    .backgroundColor = {0, 0, 0, 255}
-		}) {
-			char *result = (char*) malloc(128);
-			sprintf(result, "0123456789 0123456 78901 234567 89012 34567 8901234567890 123456789::%d", idx);
-			Clay_String txt = (Clay_String) {
-				.length = strlen(result),
-				.chars = result
-			};
-			
-			// TODO font size is wrong, only one is allowed, but I don't know which it is
-			CLAY_TEXT(
-				txt,
-			    CLAY_TEXT_CONFIG({ .fontId = 0, .fontSize = 24, .textColor = {255,255,255,255} })
-			);
-		}
-	}
-
-	return Clay_EndLayout();
+  return Clay_EndLayout();
 }
 
 
@@ -79,65 +154,183 @@ void HandleClayErrors(Clay_ErrorData errorData) {
 }
 
 void cook() {
-	printf("\x1B[?25l"); // Hide the cursor.
-	printf("\x1B[?1049l"); // Disable alternative buffer.
-	printf("\x1B[?47l"); // Restore screen.
-	printf("\x1B[u"); // Restore cursor position.
+  printf("\x1B[?1049l"); // Disable alternative buffer.
+  printf("\x1B[?1000l"); // Disable alternative buffer.
+  printf("\x1B[?47l"); // Restore screen.
+  printf("\x1B[u"); // Restore cursor position.
+  printf("\x1B[?25h"); // Hide the cursor.
 }
 
 void uncook() {
-	printf("\x1B[?25h"); // Hide the cursor.
-	printf("\x1B[s"); // Save cursor position.
-	printf("\x1B[?47h"); // Save screen.
-	printf("\x1B[?1049h"); // Enable alternative buffer.
+  printf("\x1B[?25l"); // show the cursor.
+  printf("\x1B[s"); // Save cursor position.
+  printf("\x1B[?47h"); // Save screen.
+  printf("\x1B[?1000h"); // Disable alternative buffer.
+  printf("\x1B[?1049h"); // save cursor and enable alternative buffer.
 }
 
 struct termios orig_termios;
 
 void disableRawMode() {
-  uncook();
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+  cook();
 }
 
 void enableRawMode() {
   tcgetattr(STDIN_FILENO, &orig_termios);
   atexit(disableRawMode);
+
   struct termios raw = orig_termios;
-  raw.c_iflag &= ~(ICRNL | IXON);
+  raw.c_iflag &= ~(ICRNL | IXON | BRKINT | INPCK | ISTRIP);
   raw.c_oflag &= ~(OPOST);
   raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+  raw.c_cc[VTIME] = 0;
+  raw.c_cc[VMIN] = 1;
 
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
-  cook();
+  uncook();
 }
 
+void setTermSize(Clay_Dimensions* wsize) {
+    struct winsize w;
+    if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1)
+      return;
+    wsize->width = (float) w.ws_col;
+  wsize->height = (float) w.ws_row;
+}
+
+void die(const char *s) {
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+  perror(s);
+  exit(1);
+}
+
+enum editorKey {
+  ARROW_LEFT = 0x100,
+  ARROW_RIGHT = 0x201,
+  ARROW_UP = 0x302,
+  ARROW_DOWN = 0x303
+};
+
+char rawRead() {
+  char c;
+  int nread = read(STDIN_FILENO, &c, 1);
+  if (nread == -1 && errno != EAGAIN) die("read");
+  return c;
+}
+
+int editorReadKey() {
+  char seq[10] = {0};
+  read(STDIN_FILENO, seq, 10);
+  char *ptr = seq;
+
+  if (*ptr == '\x1b') {
+    ptr += 1;
+    if (*ptr == '[') {
+      int ctrl = 0;
+
+      reparse_char:
+      switch (ptr[1]) {
+        case '1': {
+          if (!ctrl){
+            ptr = ptr+3;
+            ctrl = 0x1f;
+            goto reparse_char;
+          }
+        };
+        case 'A': return (ARROW_UP + ctrl);
+        case 'B': return (ARROW_DOWN + ctrl);
+        case 'C': return (ARROW_RIGHT + ctrl);
+        case 'D': return (ARROW_LEFT + ctrl);
+        case 'M': {
+          // only left click, i'm lazy.
+          mP = (ptr[2] == 0x20);
+          // -1 is important, we use 0-based indexing, the shell uses 1-based indexing
+          mX = ptr[3] - 32 - 1;
+          mY = ptr[4] - 32 - 1;
+        }
+      }
+    }
+    return '\x1b';
+  } else {
+    return *ptr;
+  }
+}
+
+#define CTRL_KEY(k) ((k) & 0x1f)
+
+void editorProcessKeypress() {
+  int c = editorReadKey();
+  // Console_MoveCursor(10, 10);
+  // printf("%x:%c", c, c);
+  // fflush(stdout);
+  // sleep(1);
+  switch (c) {
+    case CTRL_KEY('q'):
+      write(STDOUT_FILENO, "\x1b[2J", 4);
+      write(STDOUT_FILENO, "\x1b[H", 3);
+      exit(0);
+      break;
+    // case ' ':
+    // case '\r':
+    //  mP = !mP;
+    //  break;
+    case ARROW_UP:
+      mY = CLAY__MAX(0, mY - 1);
+      break;
+    case ARROW_DOWN:
+      mY = CLAY__MIN(wsize.height, mY + 1);
+      break;
+    case ARROW_LEFT:
+      mX = CLAY__MAX(0, mX - 1);
+      break;
+    case ARROW_RIGHT:
+      mX = CLAY__MIN(wsize.width, mX + 1);
+      break;
+    case (ARROW_LEFT+0x1f):
+      mX = CLAY__MAX(0, mX - 10);
+      break;
+    case (ARROW_UP+0x1f):
+      mY = CLAY__MAX(0, mY - 10);
+      break;
+    case (ARROW_DOWN+0x1f):
+      mY = CLAY__MIN(wsize.height, mY + 5);
+      break;
+    case (ARROW_RIGHT+0x1f):
+      mX = CLAY__MIN(wsize.width, mX + 10);
+      break;
+  }
+}
+
+void DrawFrame() {
+  Clay_RenderCommandArray layout = CreateLayout();
+  Clay_Console_Render(layout, Clay_GetCurrentContext());
+  fflush(stdout);
+}
+
+
 int main() {
-	const int width = 80;
-	const int height = 24;
+  enableRawMode();
+  setTermSize(&wsize);
 
-	enableRawMode();
+  uint64_t totalMemorySize = Clay_MinMemorySize();
+  Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
+  Clay_Initialize(
+    arena,
+    wsize,
+    (Clay_ErrorHandler) {
+      HandleClayErrors
+    }
+  );
 
-	uint64_t totalMemorySize = Clay_MinMemorySize();
-	Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
-	Clay_Initialize(
-		arena,
-		(Clay_Dimensions) {
-			.width = (float) width,
-			.height = (float) height
-		},
-		(Clay_ErrorHandler) {
-			HandleClayErrors
-		}
-	);
-	// TODO this is wrong, but I have no idea what the actual size of the terminal is in pixels
-	// // Tell clay how to measure text
-	Clay_SetMeasureTextFunction(Console_MeasureText, NULL);
-  	
-  	char c;
-	do {
-    	Clay_RenderCommandArray layout = CreateLayout();
-
-		Clay_Console_Render(layout, width, height);
-		fflush(stdout);
-  	} while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q');
+  // TODO this is wrong, but I have no idea what the actual size of the terminal is in pixels
+  // // Tell clay how to measure text
+  Clay_SetMeasureTextFunction(Console_MeasureText, NULL);
+  // Clay_SetDebugModeEnabled(1);
+    while (1){
+      Clay_SetPointerState((Clay_Vector2) { mX, mY }, mP);
+      DrawFrame();
+      editorProcessKeypress();
+    }
 }
