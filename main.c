@@ -1,5 +1,6 @@
 // Must be defined in one file, _before_ #include "clay.h"
 #define CLAY_IMPLEMENTATION
+
 #include <ctype.h>
 #include <sys/ioctl.h>
 #include <termios.h>
@@ -9,9 +10,10 @@
 #include <time.h>
 #include <stdint.h>
 
-// #define CLAY__FLOATEQUAL_FN(x, y) x == y
+#define bool int
 
-#define bool _Bool;
+
+// #define CLAY__FLOATEQUAL_FN(x, y) x == y
 // #define CLAY__FLOAT int32_t
 // #define CLAY__MAXFLOAT INT32_MAX 
 // #define CLAY_DISABLE_SIMD 1
@@ -23,7 +25,7 @@
 const Clay_Color COLOR_BLACK = (Clay_Color) {0, 0, 0, 255};
 const Clay_Color COLOR_WHITE = (Clay_Color) {255, 255, 255, 255};
 const Clay_Color COLOR_RED = (Clay_Color) {255, 0, 0, 255};
-const Clay_Color COLOR_GREEN = (Clay_Color) {0, 255, 0, 255};
+const Clay_Color COLOR_GREEN = (Clay_Color) {0, 127, 0, 255};
 const Clay_Color COLOR_BLUE = (Clay_Color) {0, 0, 255, 255};
 const Clay_Color COLOR_LIGHT = (Clay_Color) {100, 100, 100, 255};
 
@@ -55,11 +57,11 @@ void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerI
     if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
         *buttonData = 1;
 
-    if( pointerInfo.state == CLAY_POINTER_DATA_RELEASED)
-        *buttonData = 0;
+    // if( pointerInfo.state == CLAY_POINTER_DATA_RELEASED)
+    //     *buttonData = 0;
 
     if (pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME){
-        *buttonData = 0;
+         *buttonData = 0;
       // HERE DO THINGS
     }
 
@@ -68,15 +70,15 @@ void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerI
 void RenderButton(Clay_String txt, int* buttonState){
   CLAY({
       .layout = {
-      .padding = CLAY_PADDING_ALL(0),
+      .padding = CLAY_PADDING_ALL(1),
         .layoutDirection = CLAY_TOP_TO_BOTTOM,
         .sizing = {
-          .width = CLAY_SIZING_FIXED(8),
-          .height = CLAY_SIZING_FIXED(1)
+          .width = CLAY_SIZING_FIXED(10),
+          .height = CLAY_SIZING_FIXED(3)
         }
       },
       .backgroundColor = Clay_Hovered() ? (*buttonState ? COLOR_RED : COLOR_BLUE) : COLOR_GREEN,
-      .border = { .width = CLAY_BORDER_OUTSIDE(0), .color = COLOR_LIGHT }
+      .border = { .width = CLAY_BORDER_OUTSIDE(1), .color = COLOR_LIGHT }
     }) {
       Clay_OnHover(HandleButtonInteraction, (intptr_t)buttonState);
       CLAY_TEXT(Clay_Hovered() ? (*buttonState ? txt_clicked : txt_hovered) : txt, CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE }));
@@ -101,7 +103,7 @@ Clay_RenderCommandArray CreateLayout() {
     CLAY({
         .id = CLAY_ID("SideBar"),
         .layout = {
-          .padding = CLAY_PADDING_ALL(0),
+          .padding = CLAY_PADDING_ALL(1),
           .layoutDirection = CLAY_TOP_TO_BOTTOM,
           .sizing = {
             .width = CLAY_SIZING_FIXED(20),
@@ -109,7 +111,7 @@ Clay_RenderCommandArray CreateLayout() {
           }
         },
         .backgroundColor = COLOR_RED,
-        .border = { .width = CLAY_BORDER_OUTSIDE(0), .color = COLOR_WHITE }
+        .border = { .width = CLAY_BORDER_OUTSIDE(1), .color = COLOR_WHITE }
     }) {
       CLAY_TEXT(CLAY_STRING("Sidebar"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
       RenderButton(CLAY_STRING("B1"), &button1);
@@ -120,7 +122,7 @@ Clay_RenderCommandArray CreateLayout() {
     CLAY({
       .id = CLAY_ID("OtherSideBar"),
         .layout = {
-        .padding = CLAY_PADDING_ALL(2),
+        .padding = CLAY_PADDING_ALL(1),
           .layoutDirection = CLAY_TOP_TO_BOTTOM,
           .sizing = {
             .width = CLAY_SIZING_GROW(),
@@ -130,10 +132,6 @@ Clay_RenderCommandArray CreateLayout() {
         .backgroundColor = COLOR_LIGHT
     }) {
       CLAY_TEXT(CLAY_STRING("Sidebar"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
-      RenderButton(CLAY_STRING("B1"), &button1);
-      RenderButton(CLAY_STRING("B2"), &button2);
-      RenderButton(CLAY_STRING("B3"), &button3);
-
       char result[128];
       sprintf(result, "MX: %d MY: %d MC: %d F:%d fps: %.5f", mX, mY, mP, frameCount, renderSpeed > 0 ? 1/renderSpeed : 0);
       Clay_String txt = (Clay_String) {
@@ -195,8 +193,8 @@ void enableRawMode() {
   raw.c_iflag &= ~(ICRNL | IXON | BRKINT | INPCK | ISTRIP);
   raw.c_oflag &= ~(OPOST);
   raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-  raw.c_cc[VTIME] = 0;
-  raw.c_cc[VMIN] = 1;
+  raw.c_cc[VTIME] = 8;
+  raw.c_cc[VMIN] = 0;
 
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
   uncook();
@@ -207,7 +205,7 @@ void setTermSize(Clay_Dimensions* wsize) {
     if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1)
       return;
     wsize->width = (CLAY__FLOAT) w.ws_col;
-  wsize->height = (CLAY__FLOAT) w.ws_row;
+    wsize->height = (CLAY__FLOAT) w.ws_row;
 }
 
 void die(const char *s) {
@@ -244,7 +242,7 @@ int editorReadKey() {
       reparse_char:
       switch (ptr[1]) {
         case '1': {
-          if (!ctrl){
+          if (ctrl == 0){
             ptr = ptr+3;
             ctrl = 0x1f;
             goto reparse_char;
@@ -284,9 +282,9 @@ void editorProcessKeypress() {
       exit(0);
       break;
     // case ' ':
-    // case '\r':
-    //  mP = !mP;
-    //  break;
+    case '\r':
+      mP = !mP;
+      break;
     case ARROW_UP:
       mY = CLAY__MAX(0, mY - 1);
       break;
@@ -316,7 +314,7 @@ void editorProcessKeypress() {
 
 void DrawFrame() {
   Clay_RenderCommandArray layout = CreateLayout();
-  Clay_Console_Render(layout, Clay_GetCurrentContext());
+  Clay_Console_Render(layout, wsize.width, wsize.height);
   fflush(stdout);
 }
 
@@ -338,10 +336,9 @@ int main() {
   // TODO this is wrong, but I have no idea what the actual size of the terminal is in pixels
   // // Tell clay how to measure text
   Clay_SetMeasureTextFunction(Console_MeasureText, NULL);
-  // Clay_SetDebugModeEnabled(1);
-    while (1){
-      Clay_SetPointerState((Clay_Vector2) { mX, mY }, mP);
-      DrawFrame();
-      editorProcessKeypress();
-    }
+  while (1){
+    Clay_SetPointerState((Clay_Vector2) { mX, mY }, mP);
+    DrawFrame();
+    editorProcessKeypress();
+  }
 }

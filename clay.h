@@ -3684,6 +3684,22 @@ void Clay_SetPointerState(Clay_Vector2 position, bool isPointerDown) {
     context->pointerInfo.position = position;
     context->pointerOverIds.length = 0;
     Clay__int32_tArray dfsBuffer = context->layoutElementChildrenBuffer;
+
+    // EXTRA: pointer events captured on the current frame.
+    if (isPointerDown) {
+        if (context->pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+            context->pointerInfo.state = CLAY_POINTER_DATA_PRESSED;
+        } else if (context->pointerInfo.state != CLAY_POINTER_DATA_PRESSED) {
+            context->pointerInfo.state = CLAY_POINTER_DATA_PRESSED_THIS_FRAME;
+        }
+    } else {
+        if (context->pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
+            context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED;
+        } else if (context->pointerInfo.state != CLAY_POINTER_DATA_RELEASED)  {
+            context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED_THIS_FRAME;
+        }
+    }
+
     for (int32_t rootIndex = context->layoutElementTreeRoots.length - 1; rootIndex >= 0; --rootIndex) {
         dfsBuffer.length = 0;
         Clay__LayoutElementTreeRoot *root = Clay__LayoutElementTreeRootArray_Get(&context->layoutElementTreeRoots, rootIndex);
@@ -3735,21 +3751,10 @@ void Clay_SetPointerState(Clay_Vector2 position, bool isPointerDown) {
         }
     }
 
-    if (isPointerDown) {
-        if (context->pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-            context->pointerInfo.state = CLAY_POINTER_DATA_PRESSED;
-        } else if (context->pointerInfo.state != CLAY_POINTER_DATA_PRESSED) {
-            context->pointerInfo.state = CLAY_POINTER_DATA_PRESSED_THIS_FRAME;
-        }
-    } else {
-        if (context->pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
-            context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED;
-        } else if (context->pointerInfo.state != CLAY_POINTER_DATA_RELEASED)  {
-            context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED_THIS_FRAME;
-        }
-    }
+    
 }
 
+// EXTRA: expose mouse state. From nicbarker/clay#277
 CLAY_WASM_EXPORT("Clay_GetPointerState")
 Clay_PointerData Clay_GetPointerState() {
     Clay_Context* context = Clay_GetCurrentContext();

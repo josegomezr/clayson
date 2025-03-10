@@ -1,12 +1,11 @@
-
+#ifndef H_CLAY_RENDER_TERMINAL
+#define H_CLAY_RENDER_TERMINAL
 #include "stdint.h"
 #include "string.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include "math.h"
-#ifndef CLAY_HEADER
-#include "clay.h"
-#endif
+
 #ifdef CLAY_OVERFLOW_TRAP
 #include "signal.h"
 #endif
@@ -33,11 +32,18 @@ static inline bool Clay_PointIsInsideRect(Clay_Vector2 point, Clay_BoundingBox r
 	return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
 }
 
-static inline void Console_DrawBorder(int x0, int y0, int width, int height, Clay_Color color, Clay_BoundingBox scissorBox, char character) {
-	Console_SetFgColor(color);
-	for (int y = y0; y < (y0+height); y++) {
-		for (int x = x0; x < (x0+width); x++) {
-			if(!Clay__PointIsInsideRect((Clay_Vector2) { .x = x, .y = y }, scissorBox)) {
+
+static inline void Console_DrawRectangle(Clay_BoundingBox rect, Clay_BoundingBox scissorBox, char character) {
+	int 
+		x0 = (int)rect.x,
+		height = (int)rect.height,
+		y0 = (int)rect.y,
+		width = (int)rect.width
+	;
+
+	for (int y = y0; y < y0+height; y++) {
+		for (int x = x0; x < x0+width; x++) {
+			if(!Clay_PointIsInsideRect((Clay_Vector2) { .x = x, .y = y }, scissorBox)) {
 				continue;
 			}
 
@@ -45,32 +51,6 @@ static inline void Console_DrawBorder(int x0, int y0, int width, int height, Cla
 			putchar(character);
 		}
 	}
-	Console_Reset();
-}
-
-static inline void Console_DrawRectangle(int x0, int y0, int width, int height, Clay_Color color, Clay_BoundingBox scissorBox, char character) {
-	Console_SetBgColor(color);
-	for (int y = y0; y < y0+height; y++) {
-		for (int x = x0; x < x0+width; x++) {
-			if(!Clay__PointIsInsideRect((Clay_Vector2) { .x = x, .y = y }, scissorBox)) {
-				continue;
-			}
-
-			Console_MoveCursor(x, y);
-			putchar(' ');
-			// // TODO there are only two colors actually drawn, the background and white
-			// if (color.a < 64) {
-			// 	printf(".");
-			// } else if (color.a < 128) {
-			// 	printf("░");
-			// } else if (color.a < 192) {
-			// 	printf("▒");
-			// } else {
-			// 	printf("█");
-			// }
-		}
-	}
-	Console_Reset();
 }
 
 static inline Clay_Dimensions Console_MeasureText(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData) {
@@ -100,17 +80,9 @@ static inline Clay_Dimensions Console_MeasureText(Clay_StringSlice text, Clay_Te
 	return textSize;
 }
 
-void Clay_Console_Render(Clay_RenderCommandArray renderCommands, Clay_Context* ctx)
+void Clay_Console_Render(Clay_RenderCommandArray renderCommands, int width, int height)
 {
 	Console_Clear();
-
-	int width = 80, height = 24;
-
-	if (ctx != (Clay_Context*)0) {
-		width = (ctx->layoutDimensions).width;
-		height = (ctx->layoutDimensions).height;
-	}
-
 	const Clay_BoundingBox fullWindow = {
 		.x = 0,
 		.y = 0,
@@ -159,64 +131,65 @@ void Clay_Console_Render(Clay_RenderCommandArray renderCommands, Clay_Context* c
 			}
 			case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
 				Clay_RectangleRenderData config = renderCommand->renderData.rectangle;
-				Console_DrawRectangle(
-					(int)boundingBox.x,
-					(int)boundingBox.y,
-					(int)boundingBox.width,
-					(int)boundingBox.height,
-					config.backgroundColor,
-					scissorBox, ' ');
+				Console_SetBgColor(config.backgroundColor);
+				Console_DrawRectangle(boundingBox, scissorBox, ' ');
 				break;
 			}
-			/*case CLAY_RENDER_COMMAND_TYPE_BORDER: {
+			case CLAY_RENDER_COMMAND_TYPE_BORDER: {
 				Clay_BorderRenderData config = renderCommand->renderData.border;
+				Console_SetFgColor(config.color);
 				// Left border
 				if (config.width.left > 0) {
-					Console_DrawBorder(
-						(int)(boundingBox.x),
-						(int)(boundingBox.y),
-						(int)config.width.left,
-						(int)(boundingBox.height),
-						config.color,
+					Console_DrawRectangle(
+						(Clay_BoundingBox) {
+							.x = boundingBox.x,
+							.y = boundingBox.y,
+							.width = config.width.left,
+							.height = boundingBox.height,
+						},
 						scissorBox,
 						'|');
 				}
 				// Right border
 				if (config.width.right > 0) {
-					Console_DrawBorder(
-						(int)(boundingBox.x + boundingBox.width - config.width.right),
-						(int)(boundingBox.y),
-						(int)config.width.right,
-						(int)(boundingBox.height),
-						config.color,
+					Console_DrawRectangle(
+						(Clay_BoundingBox) {
+							.x = boundingBox.x + boundingBox.width - config.width.right,
+							.y = boundingBox.y,
+							.width = config.width.right,
+							.height = boundingBox.height,
+						},
 						scissorBox,
 						'|');
 				}
 				// Top border
 				if (config.width.top > 0) {
-					Console_DrawBorder(
-						(int)(boundingBox.x),
-						(int)(boundingBox.y),
-						(int)(boundingBox.width),
-						(int)config.width.top,
-						config.color,
+					Console_DrawRectangle(
+						(Clay_BoundingBox) {
+							.x = boundingBox.x,
+							.y = boundingBox.y,
+							.width = boundingBox.width,
+							.height = config.width.top,
+						},
 						scissorBox,
 						'-');
 
 				}
 				// Bottom border
 				if (config.width.bottom > 0) {
-					Console_DrawBorder(
-						(int)(boundingBox.x),
-						(int)(boundingBox.y + boundingBox.height - config.width.bottom),
-						(int)(boundingBox.width),
-						(int)config.width.bottom,
-						config.color,
+					Console_DrawRectangle(
+						(Clay_BoundingBox) {
+							.x = boundingBox.x,
+							.y = boundingBox.y + boundingBox.height - config.width.bottom,
+							.width = boundingBox.width,
+							.height = config.width.bottom,
+						},
 						scissorBox,
 						'-');
 				}
+				Console_Reset();
 				break;
-			}*/
+			}
 			case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
 			case CLAY_RENDER_COMMAND_TYPE_IMAGE:
 				break;
@@ -239,3 +212,4 @@ void Clay_Console_Render(Clay_RenderCommandArray renderCommands, Clay_Context* c
 		printf("▒");
 	}
 }
+#endif
