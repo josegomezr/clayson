@@ -51,13 +51,13 @@ static inline void Console_DrawBorder(int x0, int y0, int width, int height, Cla
 static inline void Console_DrawRectangle(int x0, int y0, int width, int height, Clay_Color color, Clay_BoundingBox scissorBox, char character) {
 	Console_SetBgColor(color);
 	for (int y = y0; y < y0+height; y++) {
-		for (int x = x0; x < y0+width; x++) {
+		for (int x = x0; x < x0+width; x++) {
 			if(!Clay__PointIsInsideRect((Clay_Vector2) { .x = x, .y = y }, scissorBox)) {
 				continue;
 			}
 
 			Console_MoveCursor(x, y);
-			putchar('.');
+			putchar(' ');
 			// // TODO there are only two colors actually drawn, the background and white
 			// if (color.a < 64) {
 			// 	printf(".");
