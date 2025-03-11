@@ -1,13 +1,12 @@
 #ifndef H_CLAY_RENDER_TERMINAL
 #define H_CLAY_RENDER_TERMINAL
-#include "stdint.h"
-#include "string.h"
-#include "stdio.h"
-#include "stdlib.h"
-#include "math.h"
+#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #ifdef CLAY_OVERFLOW_TRAP
-#include "signal.h"
+#include <signal.h>
 #endif
 
 static inline void Console_MoveCursor(int x, int y) {
@@ -28,11 +27,6 @@ static inline void Console_SetBgColor(Clay_Color color) {
 	printf("\x1b[48;2;%d;%d;%dm", (int)color.r, (int)color.g, (int)color.b);
 }
 
-static inline bool Clay_PointIsInsideRect(Clay_Vector2 point, Clay_BoundingBox rect) {
-	return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
-}
-
-
 static inline void Console_DrawRectangle(Clay_BoundingBox rect, Clay_BoundingBox scissorBox, char character) {
 	int 
 		x0 = (int)rect.x,
@@ -43,7 +37,7 @@ static inline void Console_DrawRectangle(Clay_BoundingBox rect, Clay_BoundingBox
 
 	for (int y = y0; y < y0+height; y++) {
 		for (int x = x0; x < x0+width; x++) {
-			if(!Clay_PointIsInsideRect((Clay_Vector2) { .x = x, .y = y }, scissorBox)) {
+			if(!Clay__PointIsInsideRect((Clay_Vector2) { .x = x, .y = y }, scissorBox)) {
 				continue;
 			}
 
@@ -111,7 +105,7 @@ void Clay_Console_Render(Clay_RenderCommandArray renderCommands, int width, int 
 
 					int cursorX = (int) boundingBox.x + x;
 					int cursorY = (int) boundingBox.y + y;
-					if(!Clay_PointIsInsideRect((Clay_Vector2) { .x = cursorX, .y = cursorY }, scissorBox)) {
+					if(!Clay__PointIsInsideRect((Clay_Vector2) { .x = cursorX, .y = cursorY }, scissorBox)) {
 						continue;
 					}
 
@@ -133,6 +127,7 @@ void Clay_Console_Render(Clay_RenderCommandArray renderCommands, int width, int 
 				Clay_RectangleRenderData config = renderCommand->renderData.rectangle;
 				Console_SetBgColor(config.backgroundColor);
 				Console_DrawRectangle(boundingBox, scissorBox, ' ');
+				Console_Reset();
 				break;
 			}
 			case CLAY_RENDER_COMMAND_TYPE_BORDER: {
