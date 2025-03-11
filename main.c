@@ -9,9 +9,10 @@
 #include <unistd.h>
 #include <time.h>
 #include <stdint.h>
+#include "cjson.c"
+#include <stdio.h>
 
 #define bool int
-
 
 // #define CLAY__FLOATEQUAL_FN(x, y) x == y
 // #define CLAY__FLOAT int32_t
@@ -31,9 +32,10 @@ const Clay_Color COLOR_LIGHT = (Clay_Color) {100, 100, 100, 255};
 
 static uint64_t frameCount = 0;
 static float renderSpeed = 0;
-int mX = 0;
-int mY = 0;
-int mP = 0;
+int mouseX = 0;
+int mouseY = 0;
+int clickActive = 0;
+
 Clay_Dimensions wsize = {
   .width = (CLAY__FLOAT) 80,
   .height = (CLAY__FLOAT) 24,
@@ -51,48 +53,79 @@ int button1 = 0;
 int button2 = 0;
 int button3 = 0;
 
+#define MAX_DEPTH 5
+
+typedef struct {
+  // These need to be freed
+  cJSON* json;
+  char* main_screen_buffer;
+
+  // These are weak references
+  cJSON* currentNode;
+  cJSON* parent;
+  cJSON* stack[MAX_DEPTH];
+  size_t curridx;
+} ApplicationState;
+
+static ApplicationState appstate = {
+  .main_screen_buffer = NULL,
+  .json = NULL,
+  .currentNode = NULL,
+  .parent = NULL,
+  .stack = {0},
+  .curridx = 0
+};
+
+
 void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerInfo, intptr_t userData) {
-  int *buttonData = (int *)userData;
-    // Pointer state allows you to detect mouse down / hold / release
-    if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
-        *buttonData = 1;
+  cJSON * node = (cJSON *)userData;
 
-    // if( pointerInfo.state == CLAY_POINTER_DATA_RELEASED)
-    //     *buttonData = 0;
+  // On hover, show the currently selected key
+  appstate.currentNode = node;
 
-    if (pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME){
-         *buttonData = 0;
-      // HERE DO THINGS
+  // When clicked: 
+  if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME){
+    if (cJSON_IsObject(node)){
+      if (appstate.stack[appstate.curridx] == node && appstate.curridx > 0)
+      {
+        appstate.stack[appstate.curridx] = NULL;
+        appstate.curridx = CLAY__MAX(0, appstate.curridx-1);
+      }else{
+        appstate.stack[++appstate.curridx] = appstate.currentNode;
+        appstate.currentNode = node;
+      }
     }
+  }
 
+  if (pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME){
+  }
 }
 
-void RenderButton(Clay_String txt, int* buttonState){
+void RenderKeyLabel(Clay_String txt, cJSON* node){
   CLAY({
       .layout = {
-      .padding = CLAY_PADDING_ALL(1),
+      .padding = CLAY_PADDING_ALL(0),
         .layoutDirection = CLAY_TOP_TO_BOTTOM,
         .sizing = {
-          .width = CLAY_SIZING_FIXED(10),
-          .height = CLAY_SIZING_FIXED(3)
+          .width = CLAY_SIZING_FIXED(16),
+          .height = CLAY_SIZING_FIT(1)
         }
       },
-      .backgroundColor = Clay_Hovered() ? (*buttonState ? COLOR_RED : COLOR_BLUE) : COLOR_GREEN,
-      .border = { .width = CLAY_BORDER_OUTSIDE(1), .color = COLOR_LIGHT }
+      .backgroundColor = Clay_Hovered() ? (appstate.currentNode == node ? COLOR_RED : COLOR_BLUE) : COLOR_GREEN,
+      .border = { .width = CLAY_BORDER_OUTSIDE(0), .color = COLOR_LIGHT }
     }) {
-      Clay_OnHover(HandleButtonInteraction, (intptr_t)buttonState);
-      CLAY_TEXT(Clay_Hovered() ? (*buttonState ? txt_clicked : txt_hovered) : txt, CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE }));
+      Clay_OnHover(HandleButtonInteraction, (intptr_t)node);
+      CLAY_TEXT(txt, CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE }));
     } 
 }
 
-Clay_RenderCommandArray CreateLayout() {
+Clay_RenderCommandArray CreateLayout(ApplicationState* appstate) {
   float startTime = (CLAY__FLOAT)clock()/CLOCKS_PER_SEC;
   frameCount++;
-  // highlight_color = COLOR_RED;
   Clay_BeginLayout();
 
   CLAY({
-    .id = CLAY_ID("OuterContainer"),
+    .id = CLAY_ID("MainWindow"),
     .layout = {
       .layoutDirection = CLAY_LEFT_TO_RIGHT,
       .sizing = {
@@ -101,7 +134,7 @@ Clay_RenderCommandArray CreateLayout() {
     },
   }) {
     CLAY({
-        .id = CLAY_ID("SideBar"),
+        .id = CLAY_ID("Keys"),
         .layout = {
           .padding = CLAY_PADDING_ALL(1),
           .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -110,45 +143,107 @@ Clay_RenderCommandArray CreateLayout() {
             .height = CLAY_SIZING_PERCENT(1)
           }
         },
-        .backgroundColor = COLOR_RED,
+        // .backgroundColor = COLOR_RED,
         .border = { .width = CLAY_BORDER_OUTSIDE(1), .color = COLOR_WHITE }
     }) {
-      CLAY_TEXT(CLAY_STRING("Sidebar"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
-      RenderButton(CLAY_STRING("B1"), &button1);
-      RenderButton(CLAY_STRING("B2"), &button2);
-      RenderButton(CLAY_STRING("B3"), &button3);
+      CLAY_TEXT(CLAY_STRING("Keys"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
+      
+      Clay_String gototop_label = CLAY_STRING("~ ROOT ~");
+      if (appstate->curridx > 0)
+      {
+        gototop_label = (Clay_String) {
+          .length = appstate->stack[appstate->curridx]->string_len,
+          .chars = appstate->stack[appstate->curridx]->string
+        };
+      }
+
+      RenderKeyLabel(gototop_label, appstate->stack[appstate->curridx]);
+      int i = 0;
+      for (struct cJSON* ptr = (appstate->stack[appstate->curridx])->child; ptr != NULL; ptr = ptr->next)
+      {
+        Clay_String txt = (Clay_String) {
+          .length = ptr->string_len,
+          .chars = ptr->string
+        };
+        RenderKeyLabel(txt, ptr);
+        i++;
+      }
     }
     
     CLAY({
-      .id = CLAY_ID("OtherSideBar"),
+      .id = CLAY_ID("Values"),
         .layout = {
         .padding = CLAY_PADDING_ALL(1),
-          .layoutDirection = CLAY_TOP_TO_BOTTOM,
-          .sizing = {
-            .width = CLAY_SIZING_GROW(),
-            .height = CLAY_SIZING_PERCENT(1)
-          }
-        },
-        .backgroundColor = COLOR_LIGHT
+        .layoutDirection = CLAY_TOP_TO_BOTTOM,
+        .sizing = {
+          .width = CLAY_SIZING_GROW(),
+          .height = CLAY_SIZING_PERCENT(1)
+        }
+      },
+      .backgroundColor = COLOR_LIGHT
     }) {
-      CLAY_TEXT(CLAY_STRING("Sidebar"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
-      char result[128];
-      sprintf(result, "MX: %d MY: %d MC: %d F:%d fps: %.5f", mX, mY, mP, frameCount, renderSpeed > 0 ? 1/renderSpeed : 0);
-      Clay_String txt = (Clay_String) {
-        .length = strlen(result),
-        .chars = result
-      };
+
+      if (appstate->currentNode != appstate->json)
+      {
+        CLAY({
+          .layout = {
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .sizing = {
+              .width = CLAY_SIZING_GROW(),
+              .height = CLAY_SIZING_FIXED(1)
+            }
+          },
+        }) {
+          CLAY_TEXT(CLAY_STRING("Content for: "), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
+          Clay_String keyname = (Clay_String) {
+            .length = appstate->currentNode->string_len,
+            .chars = appstate->currentNode->string
+          };
+          CLAY_TEXT(keyname, CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
+        }
+      }else{
+        CLAY_TEXT(CLAY_STRING("Select an Item"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
+      }
+
+      if (appstate->currentNode == NULL) {
+        CLAY_TEXT(
+          CLAY_STRING("nothing to show"),
+            CLAY_TEXT_CONFIG({
+              .wrapMode = CLAY_TEXT_WRAP_WORDS,
+              .textColor = COLOR_WHITE
+            })
+        );
+      } else {
+        cJSON_PrintPreallocated(appstate->currentNode, appstate->main_screen_buffer, 80*24, 1);
+
+        Clay_String valueforkey = (Clay_String) {
+          .length = strlen(appstate->main_screen_buffer),
+          .chars = appstate->main_screen_buffer
+        };
+
+        CLAY_TEXT(
+          valueforkey,
+            CLAY_TEXT_CONFIG({
+              .wrapMode = CLAY_TEXT_WRAP_WORDS,
+              .textColor = COLOR_WHITE
+            })
+        );
+      }
+ 
+      // char result[128];
+      // sprintf(result, "MX: %d MY: %d MC: %d F:%d fps: %.5f", mouseX, mouseY, clickActive, frameCount, renderSpeed > 0 ? 1/renderSpeed : 0);
+      // Clay_String txt = (Clay_String) {
+      //   .length = strlen(result),
+      //   .chars = result
+      // };
       
-      // TODO font size is wrong, only one is allowed, but I don't know which it is
-      CLAY_TEXT(
-        txt,
-          CLAY_TEXT_CONFIG({
-            .wrapMode = CLAY_TEXT_WRAP_WORDS,
-            .fontId = 1,
-            .fontSize = 1,
-            .textColor = COLOR_GREEN
-          })
-      );
+      // CLAY_TEXT(
+      //   txt,
+      //     CLAY_TEXT_CONFIG({
+      //       .wrapMode = CLAY_TEXT_WRAP_WORDS,
+      //       .textColor = COLOR_GREEN
+      //     })
+      // );
     }
   }
   renderSpeed = ((CLAY__FLOAT)clock()/CLOCKS_PER_SEC) - startTime;
@@ -181,6 +276,9 @@ void uncook() {
 struct termios orig_termios;
 
 void disableRawMode() {
+  free(appstate.json);
+  free(appstate.main_screen_buffer);
+
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
   cook();
 }
@@ -193,7 +291,7 @@ void enableRawMode() {
   raw.c_iflag &= ~(ICRNL | IXON | BRKINT | INPCK | ISTRIP);
   raw.c_oflag &= ~(OPOST);
   raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-  raw.c_cc[VTIME] = 8;
+  raw.c_cc[VTIME] = 1;
   raw.c_cc[VMIN] = 0;
 
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
@@ -201,11 +299,15 @@ void enableRawMode() {
 }
 
 void setTermSize(Clay_Dimensions* wsize) {
+    wsize->width = 80;
+    wsize->height = 24;
+    return;
+
     struct winsize w;
     if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1)
       return;
     wsize->width = (CLAY__FLOAT) w.ws_col;
-    wsize->height = (CLAY__FLOAT) w.ws_row;
+    wsize->height = (CLAY__FLOAT) w.ws_row - 1;
 }
 
 void die(const char *s) {
@@ -254,10 +356,10 @@ int editorReadKey() {
         case 'D': return (ARROW_LEFT + ctrl);
         case 'M': {
           // only left click, i'm lazy.
-          mP = (ptr[2] == 0x20);
+          clickActive = (ptr[2] == 0x20);
           // -1 is important, we use 0-based indexing, the shell uses 1-based indexing
-          mX = ptr[3] - 32 - 1;
-          mY = ptr[4] - 32 - 1;
+          mouseX = ptr[3] - 32 - 1;
+          mouseY = ptr[4] - 32 - 1;
         }
       }
     }
@@ -281,45 +383,78 @@ void editorProcessKeypress() {
       write(STDOUT_FILENO, "\x1b[H", 3);
       exit(0);
       break;
-    // case ' ':
+    case ' ':
     case '\r':
-      mP = !mP;
+      clickActive = !clickActive;
       break;
     case ARROW_UP:
-      mY = CLAY__MAX(0, mY - 1);
+      mouseY = CLAY__MAX(0, mouseY - 1);
       break;
     case ARROW_DOWN:
-      mY = CLAY__MIN(wsize.height, mY + 1);
+      mouseY = CLAY__MIN(wsize.height, mouseY + 1);
       break;
     case ARROW_LEFT:
-      mX = CLAY__MAX(0, mX - 1);
+      mouseX = CLAY__MAX(0, mouseX - 1);
       break;
     case ARROW_RIGHT:
-      mX = CLAY__MIN(wsize.width, mX + 1);
+      mouseX = CLAY__MIN(wsize.width, mouseX + 1);
       break;
     case (ARROW_LEFT+0x1f):
-      mX = CLAY__MAX(0, mX - 10);
+      mouseX = CLAY__MAX(0, mouseX - 10);
       break;
     case (ARROW_UP+0x1f):
-      mY = CLAY__MAX(0, mY - 10);
+      mouseY = CLAY__MAX(0, mouseY - 10);
       break;
     case (ARROW_DOWN+0x1f):
-      mY = CLAY__MIN(wsize.height, mY + 5);
+      mouseY = CLAY__MIN(wsize.height, mouseY + 5);
       break;
     case (ARROW_RIGHT+0x1f):
-      mX = CLAY__MIN(wsize.width, mX + 10);
+      mouseX = CLAY__MIN(wsize.width, mouseX + 10);
       break;
   }
 }
 
-void DrawFrame() {
-  Clay_RenderCommandArray layout = CreateLayout();
+void DrawFrame(ApplicationState* appstate) {
+  Clay_RenderCommandArray layout = CreateLayout(appstate);
   Clay_Console_Render(layout, wsize.width, wsize.height);
   fflush(stdout);
 }
 
+int main(int argc, char** argv) {
 
-int main() {
+  if (argc < 2)
+  {
+    printf("no json file provided\n");
+    exit(1);
+  }
+
+  char* source = (char *)malloc(10000);
+  FILE *fp = fopen(argv[1], "r");
+  if(fp != NULL)
+  {
+      int idx = 0;
+      char symbol;
+      while(( symbol= getc(fp)) != EOF)
+      {
+        source[idx++] = symbol;
+      }
+      fclose(fp);
+  }
+  appstate.json = cJSON_Parse(source);
+  appstate.main_screen_buffer = (char *)malloc(80*24);
+  appstate.stack[appstate.curridx] = appstate.json;
+  appstate.currentNode = appstate.json;
+
+  if (appstate.json == NULL)
+  {
+    cook();
+    printf("error parsing json on offset %d\n", global_error.position);
+    printf("%.*s\n", (global_error.position+2), global_error.json);
+    printf("%*s", global_error.position, "^");
+    fflush(stdout);
+    exit(1);
+  }
+
   enableRawMode();
   setTermSize(&wsize);
 
@@ -336,9 +471,10 @@ int main() {
   // TODO this is wrong, but I have no idea what the actual size of the terminal is in pixels
   // // Tell clay how to measure text
   Clay_SetMeasureTextFunction(Console_MeasureText, NULL);
+  
   while (1){
-    Clay_SetPointerState((Clay_Vector2) { mX, mY }, mP);
-    DrawFrame();
+    Clay_SetPointerState((Clay_Vector2) { mouseX, mouseY }, clickActive);
+    DrawFrame(&appstate);
     editorProcessKeypress();
   }
 }
