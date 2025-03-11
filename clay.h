@@ -1556,9 +1556,12 @@ Clay__MeasureTextCacheItem *Clay__MeasureTextCached(Clay_String *text, Clay_Text
     return measured;
 }
 
+// the far edge of a square *needs* not to be included in the bbox computation
+// else two contiguous boxes will always be triggered by hover.
+
 bool Clay__PointIsInsideRect(Clay_Vector2 point, Clay_BoundingBox rect) {
-    // return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
-    return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y < rect.y + rect.height;
+ // return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+    return point.x >= rect.x && point.x < rect.x + rect.width && point.y >= rect.y && point.y < rect.y + rect.height;
 }
 
 Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Clay_LayoutElement* layoutElement, uint32_t idAlias) {
@@ -3685,21 +3688,6 @@ void Clay_SetPointerState(Clay_Vector2 position, bool isPointerDown) {
     context->pointerOverIds.length = 0;
     Clay__int32_tArray dfsBuffer = context->layoutElementChildrenBuffer;
 
-    // EXTRA: pointer events captured on the current frame.
-    if (isPointerDown) {
-        if (context->pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-            context->pointerInfo.state = CLAY_POINTER_DATA_PRESSED;
-        } else if (context->pointerInfo.state != CLAY_POINTER_DATA_PRESSED) {
-            context->pointerInfo.state = CLAY_POINTER_DATA_PRESSED_THIS_FRAME;
-        }
-    } else {
-        if (context->pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
-            context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED;
-        } else if (context->pointerInfo.state != CLAY_POINTER_DATA_RELEASED)  {
-            context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED_THIS_FRAME;
-        }
-    }
-
     for (int32_t rootIndex = context->layoutElementTreeRoots.length - 1; rootIndex >= 0; --rootIndex) {
         dfsBuffer.length = 0;
         Clay__LayoutElementTreeRoot *root = Clay__LayoutElementTreeRootArray_Get(&context->layoutElementTreeRoots, rootIndex);
@@ -3751,7 +3739,20 @@ void Clay_SetPointerState(Clay_Vector2 position, bool isPointerDown) {
         }
     }
 
-    
+    // EXTRA: pointer events captured on the current frame.
+    if (isPointerDown) {
+        if (context->pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+            context->pointerInfo.state = CLAY_POINTER_DATA_PRESSED;
+        } else if (context->pointerInfo.state != CLAY_POINTER_DATA_PRESSED) {
+            context->pointerInfo.state = CLAY_POINTER_DATA_PRESSED_THIS_FRAME;
+        }
+    } else {
+        if (context->pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
+            context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED;
+        } else if (context->pointerInfo.state != CLAY_POINTER_DATA_RELEASED)  {
+            context->pointerInfo.state = CLAY_POINTER_DATA_RELEASED_THIS_FRAME;
+        }
+    }   
 }
 
 // EXTRA: expose mouse state. From nicbarker/clay#277
