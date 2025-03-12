@@ -85,15 +85,15 @@ void HandleButtonInteraction(Clay_ElementId elementId, Clay_PointerData pointerI
 
   // When clicked: 
   if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME){
-    if (cJSON_IsObject(node)){
-      if (appstate.stack[appstate.curridx] == node && appstate.curridx > 0)
-      {
-        appstate.stack[appstate.curridx] = NULL;
-        appstate.curridx = CLAY__MAX(0, appstate.curridx-1);
-      }else{
+    if (appstate.stack[appstate.curridx] == node && appstate.curridx > 0)
+    {
+      appstate.stack[appstate.curridx] = NULL;
+      appstate.curridx = CLAY__MAX(0, appstate.curridx-1);
+      return;
+    }
+    if (cJSON_IsObject(node) || cJSON_IsArray(node)){
         appstate.stack[++appstate.curridx] = appstate.currentNode;
         appstate.currentNode = node;
-      }
     }
   }
 
@@ -161,10 +161,19 @@ Clay_RenderCommandArray CreateLayout(ApplicationState* appstate) {
       int i = 0;
       for (struct cJSON* ptr = (appstate->stack[appstate->curridx])->child; ptr != NULL; ptr = ptr->next)
       {
-        Clay_String txt = (Clay_String) {
-          .length = ptr->string_len,
-          .chars = ptr->string
-        };
+        Clay_String txt;
+        if(ptr->string_len > 0){
+          txt = (Clay_String) {
+            .length = ptr->string_len,
+            .chars = ptr->string
+          };
+        }else{
+          char idx_str[10];
+          txt = (Clay_String) {
+            .length = snprintf(idx_str, 10, "%d", i),
+            .chars = idx_str
+          };
+        }
         RenderKeyLabel(txt, ptr);
         i++;
       }
