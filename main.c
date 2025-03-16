@@ -114,7 +114,11 @@ void App_PopAndInspectParentNode(ApplicationState* appstate){
 }
 
 void App_BuildJsonPathStr(ApplicationState *appstate, int compact){
-  appstate->json_path_buffer_len = snprintf(appstate->json_path_buffer, 80, "%c", compact ? '.' : '$');
+  appstate->json_path_buffer_len = 0;
+  if (!compact) {
+    appstate->json_path_buffer_len = snprintf(appstate->json_path_buffer, 80, "%c", '$');
+  }
+
   for (size_t i = 1; i <= appstate->curridx; i++){
     cJSON* node = appstate->stack[i];
     int hasSpace = 0;
@@ -125,7 +129,7 @@ void App_BuildJsonPathStr(ApplicationState *appstate, int compact){
     appstate->json_path_buffer_len += snprintf(
       appstate->json_path_buffer + appstate->json_path_buffer_len,
       80 - appstate->json_path_buffer_len,
-      compact ? hasSpace ? "[\"%s\"]" : ".%s" : " > %s",
+      compact ? hasSpace ? "[\"%s\"]" : (node->string_len > 0 ? ".%s" : "%s") : " > %s",
 
       node->string_len > 0 
         ? node->string
@@ -162,8 +166,9 @@ void json_key_name(cJSON* ptr, Clay_String* ref){
 }
 
 
-void RenderKeyLabel(Clay_String txt, cJSON* node){
+void RenderKeyLabel(Clay_String txt, cJSON* node, int idx){
   CLAY({
+      .id = CLAY_IDI("keylabel", idx),
       .layout = {
       .padding = CLAY_PADDING_ALL(0),
         .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -179,6 +184,17 @@ void RenderKeyLabel(Clay_String txt, cJSON* node){
     } 
 }
 
+int cjson_children_count(cJSON* item){
+  cJSON* chldptr = item;
+  int keycount = 0;
+  while(chldptr != NULL){
+    keycount++;
+    chldptr = chldptr->next;
+  }
+  return keycount;
+}
+char *keycountlbl = NULL;
+
 void RenderSidebar(ApplicationState* appstate){
   // CLAY_TEXT(CLAY_STRING("Keys"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
     Clay_String keyname = (Clay_String) {
@@ -186,11 +202,29 @@ void RenderSidebar(ApplicationState* appstate){
       .chars = appstate->json_path_buffer
     };
 
-    RenderKeyLabel(keyname, appstate->stack[appstate->curridx]);
-    CLAY_TEXT(CLAY_STRING("---"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_CENTER }));
+    cJSON* currentNode = appstate->stack[appstate->curridx];
+
+    RenderKeyLabel(keyname, currentNode, 0);
+    CLAY({.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), } } }) {
+      if (cJSON_IsObject(currentNode)){
+        int keycount = cjson_children_count(currentNode->child);
+
+        CLAY_TEXT((CLAY__INIT(Clay_String) {
+          .length = snprintf(keycountlbl, 24, "Object <%d>", keycount),
+          .chars = keycountlbl
+        }), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE }));
+      }else if (cJSON_IsArray(currentNode)){
+        int keycount = cjson_children_count(currentNode->child);
+        CLAY_TEXT((CLAY__INIT(Clay_String) {
+          .length = snprintf(keycountlbl, 24, "Array <%d>", keycount),
+          .chars = keycountlbl
+        }), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE }));
+      }
+    }
+    CLAY_TEXT(CLAY_STRING("---"), CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE}));
 
     int i = 0;
-    for (struct cJSON* ptr = (appstate->stack[appstate->curridx])->child; ptr != NULL; ptr = ptr->next)
+    for (struct cJSON* ptr = currentNode->child; ptr != NULL; ptr = ptr->next)
     {
       Clay_String txt;
       if(ptr->string_len <= 0){
@@ -199,7 +233,7 @@ void RenderSidebar(ApplicationState* appstate){
         json_key_name(ptr, &txt);
       }
       
-      RenderKeyLabel(txt, ptr);
+      RenderKeyLabel(txt, ptr, i+1);
       i++;
     }
 }
@@ -214,10 +248,12 @@ void RenderMainContent(ApplicationState* appstate) {
         })
     );
   } else {
-    cJSON_PrintPreallocated(appstate->currentNode, appstate->main_screen_buffer, 80*24, 1);
+    cJSON_PrintPreallocated(appstate->currentNode, appstate->main_screen_buffer, 2000000, 1);
+    CLAY_TEXT(Clay__IntToString(strlen(appstate->main_screen_buffer)), CLAY_TEXT_CONFIG());
 
+    // scrollPosition = Clay_GetScrollContainerData(CLAY_ID("Values")).scrollPosition->y
     Clay_String valueforkey = (Clay_String) {
-      .length = strlen(appstate->main_screen_buffer),
+      .length = 110000, // strlen(appstate->main_screen_buffer),
       .chars = appstate->main_screen_buffer
     };
 
@@ -232,6 +268,24 @@ void RenderMainContent(ApplicationState* appstate) {
 }
 
 void RenderJsonView(ApplicationState* appstate) {
+  CLAY({
+    .id = CLAY_ID("zz"),
+    // .border = { .width = { 0, 1, 1, 1, 0}, .color = COLOR_WHITE },
+    .layout = {
+      // .padding = { 0, 1, 1, 1},
+      .layoutDirection = CLAY_TOP_TO_BOTTOM,
+      .sizing = {
+        .width = CLAY_SIZING_GROW(),
+        .height = CLAY_SIZING_PERCENT(1)
+      }
+    },
+    .scroll = { .vertical = 1 },
+    .backgroundColor = COLOR_LIGHT
+  }) {
+    RenderMainContent(appstate);
+  }
+  return;
+
   App_BuildJsonPathStr(appstate, 0);
   CLAY({
       .id = CLAY_ID("Keys"),
@@ -277,7 +331,7 @@ void RenderJsonView(ApplicationState* appstate) {
         })
     );
 
-    RenderMainContent(appstate);
+    // RenderMainContent(appstate);
   }
 }
 
@@ -304,7 +358,7 @@ void RenderInspectView(ApplicationState* appstate){
       // .border = { .width = CLAY_BORDER_OUTSIDE(1), .color = COLOR_WHITE }
     }) {
       CLAY_TEXT(
-        CLAY_STRING("Current JSON Path:"),
+        CLAY_STRING("Current JQ Path:"),
         CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .textAlignment = CLAY_TEXT_ALIGN_RIGHT,})
       );
 
@@ -392,12 +446,6 @@ Clay_RenderCommandArray CreateLayout(ApplicationState* appstate) {
   return Clay_EndLayout();
 }
 
-
-void HandleClayErrors(Clay_ErrorData errorData) {
-    // See the Clay_ErrorData struct for more information
-    printf("ERR-%d: %s", errorData.errorType, errorData.errorText.chars);
-}
-
 void EnableMouseMode(){
   mouseMode = 1;
   printf("\x1B[?1000h"); // MouseMode
@@ -420,7 +468,7 @@ void uncook() {
   printf("\x1B[?25l"); // show the cursor.
   printf("\x1B[s"); // Save cursor position.
   printf("\x1B[?47h"); // Save screen.
-  // EnableMouseMode();
+  EnableMouseMode();
   printf("\x1B[?1049h"); // save cursor and enable alternative buffer.
 }
 
@@ -469,10 +517,12 @@ void die(const char *s) {
 }
 
 enum editorKey {
-  ARROW_LEFT = 0x100,
-  ARROW_RIGHT = 0x201,
-  ARROW_UP = 0x302,
-  ARROW_DOWN = 0x303
+  ARROW_LEFT = 0x1000,
+  ARROW_RIGHT,
+  ARROW_UP,
+  ARROW_DOWN,
+  PAGE_UP,
+  PAGE_DOWN,
 };
 
 char rawRead() {
@@ -484,7 +534,7 @@ char rawRead() {
 
 int editorReadKey() {
   char seq[10] = {0};
-  read(STDIN_FILENO, seq, 10);
+  int bytesread = read(STDIN_FILENO, seq, 10);
   char *ptr = seq;
 
   if (*ptr == '\x1b') {
@@ -494,6 +544,12 @@ int editorReadKey() {
 
       reparse_char:
       switch (ptr[1]) {
+        case '6':
+          return PAGE_DOWN;
+          break;
+        case '5':
+          return PAGE_UP;
+          break;
         case '1': {
           if (ctrl == 0){
             ptr = ptr+3;
@@ -514,7 +570,11 @@ int editorReadKey() {
         }
       }
     }
-    return '\x1b';
+    if (bytesread == 1)
+    {
+      return '\x1b';
+    }
+    return '\0';
   } else {
     return *ptr;
   }
@@ -537,6 +597,11 @@ void editorProcessKeypress() {
       break;
     case CTRL_KEY('i'):
       appstate.inspectPath = !appstate.inspectPath;
+      if (appstate.inspectPath){
+        DisableMouseMode();
+      }else{
+        EnableMouseMode();
+      }
       break;
     case CTRL_KEY('q'):
       write(STDOUT_FILENO, "\x1b[2J", 4);
@@ -546,6 +611,15 @@ void editorProcessKeypress() {
     case ' ':
     case '\r':
       clickActive = !clickActive;
+      break;
+    case PAGE_DOWN:
+        Clay_UpdateScrollContainers(false, (Clay_Vector2) { 0, -2 }, 0.1);
+      break;
+    case '\x1b':
+      App_PopAndInspectParentNode(&appstate);
+      break;
+    case PAGE_UP:
+        Clay_UpdateScrollContainers(false, (Clay_Vector2) { 0, 2 }, 0.1);
       break;
     case ARROW_UP:
       mouseY = CLAY__MAX(0, mouseY - 1);
@@ -580,6 +654,16 @@ void DrawFrame(ApplicationState* appstate) {
   fflush(stdout);
 }
 
+
+void HandleClayErrors(Clay_ErrorData errorData) {
+  // See the Clay_ErrorData struct for more information
+  cook();
+  fflush(stdout);
+  printf("ERR-%d: %s", errorData.errorType, errorData.errorText.chars);
+  fflush(stdout);
+  exit(1);
+}
+
 int main(int argc, char** argv) {
 
   if (argc < 2)
@@ -588,6 +672,7 @@ int main(int argc, char** argv) {
     exit(1);
   }
 
+  keycountlbl = (char *)malloc(24);
   char* source = (char *)malloc(20000000);
   FILE *fp = fopen(argv[1], "r");
   if(fp != NULL)
@@ -601,7 +686,7 @@ int main(int argc, char** argv) {
       fclose(fp);
   }
   appstate.json = cJSON_Parse(source);
-  appstate.main_screen_buffer = (char *)malloc(80*24);
+  appstate.main_screen_buffer = source;
   appstate.json_path_buffer = (char *)malloc(80);
   appstate.json_path_buffer_len = 0;
   appstate.stack[appstate.curridx] = appstate.json;
@@ -617,11 +702,10 @@ int main(int argc, char** argv) {
     exit(1);
   }
   App_BuildJsonPathStr(&appstate, 0);
-  // appstate.json_path_buffer_len = sprintf(appstate.json_path_buffer, "a really long string a really long string a really");
   enableRawMode();
   setTermSize(&wsize);
 
-  uint64_t totalMemorySize = Clay_MinMemorySize();
+  uint64_t totalMemorySize = Clay_MinMemorySize()*2;
   Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
   Clay_Initialize(
     arena,
@@ -636,6 +720,7 @@ int main(int argc, char** argv) {
   Clay_SetMeasureTextFunction(Console_MeasureText, NULL);
   
   while (1){
+    memset(source, 0, 20000000);
     Clay_SetPointerState((Clay_Vector2) { mouseX, mouseY }, clickActive);
     DrawFrame(&appstate);
     editorProcessKeypress();
