@@ -9,6 +9,12 @@
 #include <signal.h>
 #endif
 
+#ifdef __GNUC__
+#define UNUSED(x) x __attribute__((unused))
+#else
+#define UNUSED(x) x
+#endif
+
 static inline void Console_MoveCursor(int x, int y) {
 	printf("\x1b[%d;%dH", y+1, x+1);
 }
@@ -47,7 +53,7 @@ static inline void Console_DrawRectangle(Clay_BoundingBox rect, Clay_BoundingBox
 	}
 }
 
-static inline Clay_Dimensions Console_MeasureText(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData) {
+static inline Clay_Dimensions Console_MeasureText(Clay_StringSlice text, Clay_TextElementConfig* UNUSED(config), void* UNUSED(userData)) {
 	Clay_Dimensions textSize = { 0 };
 	// TODO this function is very wrong, it measures in characters, I have no idea what is the size in pixels
 	float maxTextWidth = 0.0f;
