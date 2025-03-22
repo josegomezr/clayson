@@ -9,12 +9,6 @@
 #include <signal.h>
 #endif
 
-#ifdef __GNUC__
-#define UNUSED(x) x __attribute__((unused))
-#else
-#define UNUSED(x) x
-#endif
-
 static inline void Console_MoveCursor(int x, int y) {
 	printf("\x1b[%d;%dH", y+1, x+1);
 }
