@@ -18,6 +18,8 @@ typedef struct {
   cJSON* stack[MAX_DEPTH];
   size_t curridx;
   Clay_Dimensions jsonsize;
+  int mouseX;
+  int mouseY;
 } ApplicationState;
 
 static ApplicationState APP_global_state = {
@@ -30,7 +32,9 @@ static ApplicationState APP_global_state = {
   .currentNode = NULL,
   .parent = NULL,
   .stack = {0},
-  .curridx = 0
+  .curridx = 0,
+  .mouseX = 0,
+  .mouseY = 0
 };
 
 
@@ -63,6 +67,9 @@ void App_PushAndInspectCurrentNode(ApplicationState* appstate, cJSON* node) {
   appstate->stack[++appstate->curridx] = appstate->currentNode;
   appstate->currentNode = node;
   App_BuildJsonPathStr(appstate, 0);
+
+  appstate->mouseX = 1;
+  appstate->mouseY = 3;
 }
 
 bool App_NodeIsParent(ApplicationState* appstate, cJSON* node){
@@ -77,6 +84,14 @@ void App_PopAndInspectParentNode(ApplicationState* appstate){
   appstate->stack[appstate->curridx] = NULL;
   appstate->curridx = CLAY__MAX(0, appstate->curridx-1);
   App_BuildJsonPathStr(appstate, 0);
+  Clay_ElementId keys_id = Clay_GetElementId(CLAY_STRING("Keys"));
+  Clay_ScrollContainerData scd_keys = Clay_GetScrollContainerData(keys_id);
+  if (scd_keys.found){
+    scd_keys.scrollPosition->x = 0;
+  }
+
+  appstate->mouseX = 2;
+  appstate->mouseY = 4;
 }
 
 void App_BuildJsonPathStr(ApplicationState *appstate, int compact){

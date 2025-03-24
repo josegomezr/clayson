@@ -18,7 +18,7 @@
 // #define CLAY__FLOATEQUAL_FN(x, y) x == y
 // #define CLAY__FLOAT int32_t
 // #define CLAY__MAXFLOAT INT32_MAX 
-// #define CLAY_DISABLE_SIMD 1
+// // #define CLAY_DISABLE_SIMD 1
 // #define CLAY__EPSILON 0
 
 #include "clay.h"
@@ -38,8 +38,6 @@ static uint64_t frameCount = 0;
 static float renderSpeed = 0;
 // TODO: move these to the appstate
 int mouseMode = 1;
-int mouseX = 0;
-int mouseY = 0;
 int clickActive = 0;
 
 Clay_Dimensions wsize = {
@@ -144,6 +142,12 @@ void RenderSidebar(ApplicationState* appstate){
     Clay_String txt = clay_string_for_json_key(ptr, i);
     RenderSidebarJsonItemLabel(txt, appstate, ptr);
     i++;
+    if (i > 300)
+    {
+      Clay_String txt = CLAY_STRING("TODO: Render more keys with no OOM");
+      CLAY_TEXT(txt, CLAY_TEXT_CONFIG({ .wrapMode = CLAY_TEXT_WRAP_WORDS, .textColor = COLOR_RED }));
+      break;
+    }
   }
 }
 
@@ -172,16 +176,22 @@ void RenderMainContent(ApplicationState* appstate) {
       .layoutDirection = CLAY_TOP_TO_BOTTOM,
       .sizing = {
         .width = CLAY_SIZING_GROW(),
-        .height = CLAY_SIZING_FIXED(appstate->jsonsize.height)
+        .height = CLAY_SIZING_GROW()
       }
     }
   }) {
     Clay_String str = (Clay_String) {
-      .length = appstate->main_screen_buffer_len,
+      // .length = appstate->main_screen_buffer_len,
+      // until we learn how to render more text without running out of ram,
+      // we'll only keep 10kb of text.
+      .length = CLAY__MIN(appstate->main_screen_buffer_len, 10*1024),
       .chars = appstate->main_screen_buffer
     };
 
-    CLAY_TEXT(str, CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE }));
+    CLAY_TEXT(str, CLAY_TEXT_CONFIG({ .textColor = COLOR_WHITE, .hashStringContents = false }));
+    if (appstate->main_screen_buffer_len > 10*1024){
+      CLAY_TEXT(CLAY_STRING("TODO: Learn how to show more text without OOM"), CLAY_TEXT_CONFIG({ .textColor = COLOR_RED, .hashStringContents = false }));
+    }
   }
 
 }
@@ -414,8 +424,8 @@ int editorReadKey() {
           // only left click, i'm lazy.
           clickActive = (ptr[2] == 0x20);
           // -1 is important, we use 0-based indexing, the shell uses 1-based indexing
-          mouseX = ptr[3] - 32 - 1;
-          mouseY = ptr[4] - 32 - 1;
+          APP_global_state.mouseX = ptr[3] - 32 - 1;
+          APP_global_state.mouseY = ptr[4] - 32 - 1;
         }
       }
     }
@@ -471,28 +481,28 @@ void editorProcessKeypress() {
         Clay_UpdateScrollContainers(false, (Clay_Vector2) { 0, 2 }, 0.2);
       break;
     case ARROW_UP:
-      mouseY = CLAY__MAX(0, mouseY - 1);
+      APP_global_state.mouseY = CLAY__MAX(0, APP_global_state.mouseY - 1);
       break;
     case ARROW_DOWN:
-      mouseY = CLAY__MIN(wsize.height - 1, mouseY + 1);
+      APP_global_state.mouseY = CLAY__MIN(wsize.height - 1, APP_global_state.mouseY + 1);
       break;
     case ARROW_LEFT:
-      mouseX = CLAY__MAX(0, mouseX - 1);
+      APP_global_state.mouseX = CLAY__MAX(0, APP_global_state.mouseX - 1);
       break;
     case ARROW_RIGHT:
-      mouseX = CLAY__MIN(wsize.width - 1, mouseX + 1);
+      APP_global_state.mouseX = CLAY__MIN(wsize.width - 1, APP_global_state.mouseX + 1);
       break;
     case (ARROW_LEFT+0x1f):
-      mouseX = CLAY__MAX(0, mouseX - 10);
+      APP_global_state.mouseX = CLAY__MAX(0, APP_global_state.mouseX - 10);
       break;
     case (ARROW_UP+0x1f):
-      mouseY = CLAY__MAX(0, mouseY - 10);
+      APP_global_state.mouseY = CLAY__MAX(0, APP_global_state.mouseY - 10);
       break;
     case (ARROW_DOWN+0x1f):
-      mouseY = CLAY__MIN(wsize.height - 1, mouseY + 5);
+      APP_global_state.mouseY = CLAY__MIN(wsize.height - 1, APP_global_state.mouseY + 5);
       break;
     case (ARROW_RIGHT+0x1f):
-      mouseX = CLAY__MIN(wsize.width - 1, mouseX + 10);
+      APP_global_state.mouseX = CLAY__MIN(wsize.width - 1, APP_global_state.mouseX + 10);
       break;
   }
 }
@@ -568,12 +578,16 @@ int main(int argc, char** argv) {
     exit(1);
   }
   App_BuildJsonPathStr(&APP_global_state, 0);
-  enableRawMode();
-  setTermSize(&wsize);
 
   // neither this, yes it's a lot
   // uint64_t totalMemorySize = Clay_MinMemorySize()*1024;
+  // didn't reall work
+  Clay_SetMaxElementCount(Clay__defaultMaxElementCount);
+  Clay_SetMaxMeasureTextCacheWordCount(Clay__defaultMaxMeasureTextWordCacheCount*2);
+
   uint64_t totalMemorySize = Clay_MinMemorySize();
+  printf("Allocating %ld bytes\n", totalMemorySize);
+
   Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
   Clay_Initialize(
     arena,
@@ -582,26 +596,27 @@ int main(int argc, char** argv) {
       HandleClayErrors
     }
   );
-  // didn't reall work
-  // Clay_SetMaxElementCount(Clay_GetMaxElementCount()*2);
-  // Clay_SetMaxMeasureTextCacheWordCount(Clay__defaultMaxMeasureTextWordCacheCount*1024*32);
 
   // TODO this is wrong, but I have no idea what the actual size of the terminal is in pixels
   // // Tell clay how to measure text
   Clay_SetMeasureTextFunction(Console_MeasureText, NULL);
 
+  enableRawMode();
+  setTermSize(&wsize);
+
   while (1){
     cJSON* old = APP_global_state.currentNode;
-    Clay_SetPointerState((Clay_Vector2) { mouseX, mouseY }, clickActive);
+    Clay_SetPointerState((Clay_Vector2) { APP_global_state.mouseX, APP_global_state.mouseY }, clickActive);
 
     DrawFrame(&APP_global_state);
 
-    Clay_ElementId vlid = Clay_GetElementId(CLAY_STRING("Values"));
-    Clay_ScrollContainerData scd = Clay_GetScrollContainerData(vlid);
-
+    Clay_ElementId values_id = Clay_GetElementId(CLAY_STRING("Values"));
+    Clay_ScrollContainerData scd_values = Clay_GetScrollContainerData(values_id);
+    
     if (old != APP_global_state.currentNode){
-      scd.scrollPosition->x = 0;
-      scd.scrollPosition->y = 0;
+      if (scd_values.found){
+        scd_values.scrollPosition->y = 0;
+      }
       memset(source, 0, 20000000);
       APP_JsonPrintAndMeasure(&APP_global_state);
     }
